@@ -83,6 +83,25 @@ class Episode(BaseModel):
     update_at: str = Field(..., alias="updateAt", description="Update timestamp")
     version: int = Field(default=0, alias="__v", description="Version number")
 
+    @validator('guest', pre=True)
+    def validate_guest(cls, v):
+        """Handle flexible guest parsing (strings or objects)."""
+        if not v:
+            return []
+        
+        result = []
+        for item in v:
+            if isinstance(item, str):
+                # Simple string guest
+                result.append(item)
+            elif isinstance(item, dict) and 'name' in item:
+                # Guest object with name field
+                result.append(item['name'])
+            else:
+                # Unknown type, convert to string
+                result.append(str(item))
+        return result
+    
     @validator('attachment', pre=True)
     def validate_attachment(cls, v):
         """Handle flexible attachment parsing (strings or objects)."""

@@ -5,6 +5,7 @@ Extracts episode information from the Channel Plus website by parsing
 the JSON data embedded in the page's window.__PRELOADED_STATE__.
 """
 
+import asyncio
 import json
 import re
 import logging
@@ -368,32 +369,37 @@ class ChannelPlusScraper:
             logger.error(f"Failed to get course info: {e}")
             raise
     
-    async def detect_course_materials(self, course_id: int) -> List[Tuple[AttachmentInfo, str]]:
+    async def detect_course_materials(self, course_id: int, episodes: List[Episode] = None) -> List[Tuple[AttachmentInfo, str, int]]:
         """
-        Detect course materials (PDFs, documents) from the first page.
+        Detect course materials (PDFs, documents) from all provided episodes.
         
         Args:
             course_id: Course ID to check for materials
+            episodes: List of episodes to check for materials (if None, checks first page only)
             
         Returns:
-            List of tuples (attachment_info, download_url)
+            List of tuples (attachment_info, download_url, episode_number)
         """
         try:
             logger.info(f"Detecting course materials for course {course_id}...")
             
-            # Get first page to check for materials
-            episodes = await self.extract_episodes_from_page(course_id, 1)
+            # If no episodes provided, check first page only (backward compatibility)
+            if episodes is None:
+                episodes = await self.extract_episodes_from_page(course_id, 1)
             
             if not episodes:
                 logger.info("No episodes found, no materials to detect")
                 return []
             
             materials = []
+            episode_with_materials = 0
             
-            # Check all episodes on first page for materials
+            # Check all provided episodes for materials
             for episode in episodes:
                 if not episode.attachment:
                     continue
+                
+                episode_materials = []
                 
                 for attachment in episode.attachment:
                     # Skip string attachments, focus on AttachmentInfo objects
@@ -403,12 +409,15 @@ class ChannelPlusScraper:
                     if isinstance(attachment, AttachmentInfo) and attachment.key:
                         # Generate download URL
                         download_url = f"https://channelplus.ner.gov.tw/api/files/{attachment.key}"
-                        materials.append((attachment, download_url))
-                        
-                        logger.info(f"Found material: {attachment.name} -> {download_url}")
+                        materials.append((attachment, download_url, episode.part))
+                        episode_materials.append(attachment.name)
+                
+                if episode_materials:
+                    episode_with_materials += 1
+                    logger.debug(f"Episode {episode.part}: {len(episode_materials)} materials")
             
             if materials:
-                logger.info(f"Found {len(materials)} course materials")
+                logger.info(f"Found {len(materials)} course materials across {episode_with_materials} episodes")
             else:
                 logger.info("No course materials found")
             
@@ -418,12 +427,12 @@ class ChannelPlusScraper:
             logger.error(f"Failed to detect course materials: {e}")
             return []
     
-    async def download_course_materials(self, materials: List[Tuple[AttachmentInfo, str]], download_path: Path) -> List[Dict[str, Any]]:
+    async def download_course_materials(self, materials: List[Tuple[AttachmentInfo, str, int]], download_path: Path) -> List[Dict[str, Any]]:
         """
         Download course materials to the specified path.
         
         Args:
-            materials: List of (attachment_info, download_url) tuples
+            materials: List of (attachment_info, download_url, episode_number) tuples
             download_path: Path to download materials to
             
         Returns:
@@ -440,54 +449,76 @@ class ChannelPlusScraper:
         
         results = []
         
-        for attachment, download_url in materials:
-            try:
-                # Generate safe filename
-                filename = self._generate_material_filename(attachment)
-                file_path = materials_path / filename
-                
-                logger.info(f"Downloading {attachment.name} -> {file_path}")
-                
-                # Download the file
-                content = await self.http_client.get_content(download_url)
-                
-                # Write to file
-                with open(file_path, 'wb') as f:
-                    f.write(content)
-                
-                result = {
-                    'attachment': attachment,
-                    'url': download_url,
-                    'file_path': file_path,
-                    'status': 'success',
-                    'size': len(content)
-                }
-                
-                logger.info(f"✅ Downloaded {attachment.name} ({len(content)} bytes)")
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to download {attachment.name}: {e}")
-                result = {
-                    'attachment': attachment,
-                    'url': download_url,
-                    'file_path': None,
-                    'status': 'failed',
-                    'error': str(e)
-                }
-            
-            results.append(result)
-            
-            # Add delay between downloads
-            await self.http_client.add_delay()
+        # Use semaphore to limit concurrent downloads
+        semaphore = asyncio.Semaphore(3)  # Max 3 concurrent material downloads
+        
+        async def download_single_material(attachment, download_url, episode_num):
+            async with semaphore:
+                try:
+                    # Generate safe filename with episode prefix
+                    filename = self._generate_material_filename(attachment, episode_num)
+                    file_path = materials_path / filename
+                    
+                    logger.debug(f"Downloading material for episode {episode_num}: {attachment.name}")
+                    
+                    # Download the file
+                    content = await self.http_client.get_content(download_url)
+                    
+                    # Write to file
+                    with open(file_path, 'wb') as f:
+                        f.write(content)
+                    
+                    result = {
+                        'attachment': attachment,
+                        'url': download_url,
+                        'file_path': file_path,
+                        'episode': episode_num,
+                        'status': 'success',
+                        'size': len(content)
+                    }
+                    
+                    logger.debug(f"✅ Downloaded episode {episode_num} material: {attachment.name} ({len(content)} bytes)")
+                    return result
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to download episode {episode_num} material {attachment.name}: {e}")
+                    return {
+                        'attachment': attachment,
+                        'url': download_url,
+                        'file_path': None,
+                        'episode': episode_num,
+                        'status': 'failed',
+                        'error': str(e)
+                    }
+        
+        # Download all materials concurrently
+        tasks = [
+            download_single_material(attachment, download_url, episode_num)
+            for attachment, download_url, episode_num in materials
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        
+        # Log summary
+        successful = [r for r in results if r['status'] == 'success']
+        failed = [r for r in results if r['status'] == 'failed']
+        
+        if successful:
+            total_size = sum(r['size'] for r in successful)
+            logger.info(f"✅ Downloaded {len(successful)} materials ({total_size:,} bytes total)")
+        
+        if failed:
+            logger.warning(f"❌ Failed to download {len(failed)} materials")
         
         return results
     
-    def _generate_material_filename(self, attachment: AttachmentInfo) -> str:
+    def _generate_material_filename(self, attachment: AttachmentInfo, episode_num: int = None) -> str:
         """
         Generate a safe filename for course material.
         
         Args:
             attachment: Attachment info
+            episode_num: Episode number (optional, for organization)
             
         Returns:
             Safe filename for the material
@@ -495,10 +526,16 @@ class ChannelPlusScraper:
         if attachment.name:
             # Use the original name if available
             filename = attachment.name
+            
+            # If episode number provided and not already in filename, add prefix
+            if episode_num is not None and not filename.startswith(f"{episode_num:02d}"):
+                name_part, ext = filename.rsplit('.', 1) if '.' in filename else (filename, 'pdf')
+                filename = f"Ep{episode_num:02d}_{name_part}.{ext}"
         else:
             # Fallback: generate from key/id
             key = attachment.key or attachment.id or "unknown"
-            filename = f"course_material_{key}.pdf"
+            ep_prefix = f"Ep{episode_num:02d}_" if episode_num is not None else ""
+            filename = f"{ep_prefix}course_material_{key}.pdf"
         
         # Clean filename for filesystem safety
         filename = re.sub(r'[<>:"/\\|?*]', '_', filename)

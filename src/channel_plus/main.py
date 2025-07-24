@@ -215,36 +215,6 @@ async def async_main(
             
             console.print("[green]✅ Course URL is valid[/green]")
             
-            # Detect and download course materials
-            console.print("\n📚 Checking for course materials...")
-            materials = await scraper.detect_course_materials(course_id)
-            
-            if materials:
-                console.print(f"[green]✅ Found {len(materials)} course materials[/green]")
-                
-                if not dry_run and not validate_only:
-                    console.print("📥 Downloading course materials...")
-                    material_results = await scraper.download_course_materials(materials, actual_path)
-                    
-                    successful_materials = [r for r in material_results if r['status'] == 'success']
-                    failed_materials = [r for r in material_results if r['status'] == 'failed']
-                    
-                    if successful_materials:
-                        console.print(f"[green]✅ Downloaded {len(successful_materials)} materials to course_materials/[/green]")
-                        for result in successful_materials:
-                            console.print(f"  • {result['attachment'].name} ({result['size']} bytes)")
-                    
-                    if failed_materials:
-                        console.print(f"[red]❌ Failed to download {len(failed_materials)} materials[/red]")
-                        for result in failed_materials:
-                            console.print(f"  • {result['attachment'].name}: {result['error']}")
-                else:
-                    # Show materials in dry-run/validate mode
-                    for attachment, url in materials:
-                        console.print(f"  • {attachment.name} -> {url}")
-            else:
-                console.print("[yellow]ℹ️  No course materials found[/yellow]")
-            
             # Get course information
             if validate_only:
                 console.print("\n[yellow]Getting course information...[/yellow]")
@@ -273,6 +243,16 @@ async def async_main(
             
             console.print(f"[green]✅ Found {len(episodes)} episodes[/green]")
             
+            # Detect course materials from all episodes
+            console.print("\n📚 Checking for course materials across all episodes...")
+            materials = await scraper.detect_course_materials(course_id, episodes)
+            
+            if materials:
+                episodes_with_materials = len(set(episode_num for _, _, episode_num in materials))
+                console.print(f"[green]✅ Found {len(materials)} course materials across {episodes_with_materials} episodes[/green]")
+            else:
+                console.print("[yellow]ℹ️  No course materials found[/yellow]")
+            
             # Show episode list
             if verbose or dry_run:
                 console.print("\n[bold blue]Episodes to download:[/bold blue]")
@@ -286,8 +266,20 @@ async def async_main(
             # Dry run - just show what would be downloaded
             if dry_run:
                 total_duration = sum(ep.audio.duration for ep in episodes) / 60
+                
+                # Show materials in dry-run mode
+                if materials:
+                    console.print("\n[bold blue]Course materials found:[/bold blue]")
+                    for attachment, url, episode_num in materials[:10]:  # Show first 10
+                        console.print(f"  Ep{episode_num:02d}: {attachment.name}")
+                    
+                    if len(materials) > 10:
+                        console.print(f"  ... and {len(materials) - 10} more materials")
+                
                 console.print(f"\n[yellow]Dry run completed[/yellow]")
                 console.print(f"Would download {len(episodes)} episodes ({total_duration:.1f} minutes total)")
+                if materials:
+                    console.print(f"Would download {len(materials)} course materials")
                 return
             
             # Actual download
@@ -295,11 +287,43 @@ async def async_main(
             
             downloader = ChannelPlusDownloader(http_client, config)
             
+            # Start material downloads concurrently with episodes
+            material_task = None
+            if materials:
+                console.print(f"📥 Also downloading {len(materials)} course materials...")
+                material_task = asyncio.create_task(
+                    scraper.download_course_materials(materials, actual_path)
+                )
+            
             # Download episodes with progress tracking
             summary = await downloader.download_episodes_batch(episodes, show_progress=True)
             
             # Show results
             downloader.print_summary(summary)
+            
+            # Wait for and show material download results
+            if material_task:
+                console.print("\n📚 Waiting for course materials to complete...")
+                material_results = await material_task
+                
+                successful_materials = [r for r in material_results if r['status'] == 'success']
+                failed_materials = [r for r in material_results if r['status'] == 'failed']
+                
+                if successful_materials:
+                    total_size = sum(r['size'] for r in successful_materials)
+                    console.print(f"[green]✅ Downloaded {len(successful_materials)} materials ({total_size:,} bytes) to course_materials/[/green]")
+                    
+                    if verbose:
+                        for result in successful_materials[:10]:  # Show first 10
+                            console.print(f"  • Ep{result['episode']:02d}: {result['attachment'].name}")
+                        if len(successful_materials) > 10:
+                            console.print(f"  • ... and {len(successful_materials) - 10} more materials")
+                
+                if failed_materials:
+                    console.print(f"[red]❌ Failed to download {len(failed_materials)} materials[/red]")
+                    if verbose:
+                        for result in failed_materials[:5]:  # Show first 5 failures
+                            console.print(f"  • Ep{result['episode']:02d}: {result['attachment'].name}: {result['error']}")
             
             # Retry failed downloads if any
             if summary['failed_downloads'] > 0:
