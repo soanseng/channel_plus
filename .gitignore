@@ -22,3 +22,15 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 scraping-*.tar
 
+# generate ignore for the project
+.DS_Store
+.vscode/
+.pytest_cache/
+.python-version
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+
