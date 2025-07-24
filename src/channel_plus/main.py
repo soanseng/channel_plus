@@ -10,6 +10,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import click
 from rich.console import Console
@@ -27,9 +28,9 @@ console = Console()
 @click.command()
 @click.option(
     '--path',
-    required=True,
+    default=None,
     type=click.Path(path_type=Path),
-    help='Download path for audio files'
+    help='Download path for audio files (default: ~/Downloads/<course_name>)'
 )
 @click.option(
     '--link',
@@ -38,15 +39,15 @@ console = Console()
 )
 @click.option(
     '--start',
-    required=True,
+    default=None,
     type=int,
-    help='Starting episode number'
+    help='Starting episode number (default: 1)'
 )
 @click.option(
     '--final',
-    required=True,
+    default=None,
     type=int,
-    help='Final episode number'  
+    help='Final episode number (default: auto-detect last episode)'  
 )
 @click.option(
     '--concurrent',
@@ -88,10 +89,10 @@ console = Console()
     help='Only validate the course URL and show course information'
 )
 def main(
-    path: Path,
+    path: Optional[Path],
     link: str,
-    start: int,
-    final: int,
+    start: Optional[int],
+    final: Optional[int],
     concurrent: int,
     timeout: int,
     retry_attempts: int,
@@ -130,10 +131,10 @@ def main(
 
 
 async def async_main(
-    path: Path,
+    path: Optional[Path],
     link: str,
-    start: int,
-    final: int,  
+    start: Optional[int],
+    final: Optional[int],  
     concurrent: int,
     timeout: int,
     retry_attempts: int,
@@ -146,33 +147,7 @@ async def async_main(
     logger = logging.getLogger(__name__)
     
     try:
-        # Create download configuration
-        config = DownloadConfig(
-            path=path,
-            link=link,
-            start_episode=start,
-            final_episode=final,
-            concurrent_downloads=concurrent,
-            timeout=timeout,
-            retry_attempts=retry_attempts,
-            delay_between_requests=delay
-        )
-        
-        # Display configuration
-        console.print("[bold blue]Channel Plus Downloader - Python Implementation[/bold blue]")
-        console.print("=" * 60)
-        console.print(f"Course URL: {link}")
-        console.print(f"Episodes: {start} to {final} ({config.total_episodes} total)")
-        console.print(f"Download Path: {path}")
-        console.print(f"Pages to scan: {config.start_page} to {config.final_page}")
-        
-        if not dry_run and not validate_only:
-            console.print(f"Concurrent downloads: {concurrent}")
-            console.print(f"Request timeout: {timeout}s")
-        
-        console.print("=" * 60)
-        
-        # Initialize HTTP client and scraper
+        # Initialize HTTP client early for default detection
         async with ChannelPlusHTTPClient(
             timeout=timeout,
             retry_attempts=retry_attempts,
@@ -182,6 +157,56 @@ async def async_main(
             
             scraper = ChannelPlusScraper(http_client)
             
+            # Extract course ID for default detection
+            course_id = scraper._extract_course_id(link)
+            if not course_id:
+                console.print(f"[red]❌ Cannot extract course ID from URL: {link}[/red]")
+                sys.exit(1)
+            
+            # Set default values for optional parameters
+            actual_start = start if start is not None else 1
+            
+            actual_final = final
+            if actual_final is None:
+                console.print("🔍 Auto-detecting total episodes...")
+                actual_final = await scraper.get_total_episodes(course_id)
+                console.print(f"📊 Found {actual_final} total episodes")
+            
+            actual_path = path
+            if actual_path is None:
+                console.print("🔍 Auto-detecting course name for folder...")
+                course_name = await scraper.get_course_name(course_id)
+                home_path = Path.home()
+                downloads_path = home_path / "Downloads" 
+                actual_path = downloads_path / course_name
+                console.print(f"📁 Using path: {actual_path}")
+            
+            # Create download configuration
+            config = DownloadConfig(
+                path=actual_path,
+                link=link,
+                start_episode=actual_start,
+                final_episode=actual_final,
+                concurrent_downloads=concurrent,
+                timeout=timeout,
+                retry_attempts=retry_attempts,
+                delay_between_requests=delay
+            )
+        
+            # Display configuration
+            console.print("[bold blue]Channel Plus Downloader - Python Implementation[/bold blue]")
+            console.print("=" * 60)
+            console.print(f"Course URL: {link}")
+            console.print(f"Episodes: {actual_start} to {actual_final} ({config.total_episodes} total)")
+            console.print(f"Download Path: {actual_path}")
+            console.print(f"Pages to scan: {config.start_page} to {config.final_page}")
+        
+            if not dry_run and not validate_only:
+                console.print(f"Concurrent downloads: {concurrent}")
+                console.print(f"Request timeout: {timeout}s")
+            
+            console.print("=" * 60)
+            
             # Validate course URL
             console.print("[yellow]Validating course URL...[/yellow]")
             if not await scraper.validate_course_url(link):
@@ -189,6 +214,36 @@ async def async_main(
                 sys.exit(1)
             
             console.print("[green]✅ Course URL is valid[/green]")
+            
+            # Detect and download course materials
+            console.print("\n📚 Checking for course materials...")
+            materials = await scraper.detect_course_materials(course_id)
+            
+            if materials:
+                console.print(f"[green]✅ Found {len(materials)} course materials[/green]")
+                
+                if not dry_run and not validate_only:
+                    console.print("📥 Downloading course materials...")
+                    material_results = await scraper.download_course_materials(materials, actual_path)
+                    
+                    successful_materials = [r for r in material_results if r['status'] == 'success']
+                    failed_materials = [r for r in material_results if r['status'] == 'failed']
+                    
+                    if successful_materials:
+                        console.print(f"[green]✅ Downloaded {len(successful_materials)} materials to course_materials/[/green]")
+                        for result in successful_materials:
+                            console.print(f"  • {result['attachment'].name} ({result['size']} bytes)")
+                    
+                    if failed_materials:
+                        console.print(f"[red]❌ Failed to download {len(failed_materials)} materials[/red]")
+                        for result in failed_materials:
+                            console.print(f"  • {result['attachment'].name}: {result['error']}")
+                else:
+                    # Show materials in dry-run/validate mode
+                    for attachment, url in materials:
+                        console.print(f"  • {attachment.name} -> {url}")
+            else:
+                console.print("[yellow]ℹ️  No course materials found[/yellow]")
             
             # Get course information
             if validate_only:
@@ -209,7 +264,7 @@ async def async_main(
                 return
             
             # Get episodes in range
-            console.print(f"\n[yellow]Collecting episodes {start} to {final}...[/yellow]")
+            console.print(f"\n[yellow]Collecting episodes {actual_start} to {actual_final}...[/yellow]")
             episodes = await scraper.get_all_episodes(config)
             
             if not episodes:

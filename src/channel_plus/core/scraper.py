@@ -8,9 +8,10 @@ the JSON data embedded in the page's window.__PRELOADED_STATE__.
 import json
 import re
 import logging
-from typing import List, Optional, Dict, Any
+from pathlib import Path
+from typing import List, Optional, Dict, Any, Tuple
 
-from ..core.models import Episode, LanguageEpisodeData, DownloadConfig
+from ..core.models import Episode, LanguageEpisodeData, DownloadConfig, AttachmentInfo
 from ..core.config import ChannelPlusConfig
 from ..utils.http_client import ChannelPlusHTTPClient
 
@@ -160,6 +161,144 @@ class ChannelPlusScraper:
         logger.error(f"Could not extract course ID from URL: {url}")
         return None
     
+    async def get_course_name(self, course_id: int) -> Optional[str]:
+        """
+        Extract course name from the first page.
+        
+        Args:
+            course_id: Course ID
+            
+        Returns:
+            Course name suitable for folder creation, or None if not found
+        """
+        try:
+            episodes = await self.extract_episodes_from_page(course_id, 1)
+            if not episodes:
+                return None
+            
+            # Get the course name from the first episode's audio name
+            # Usually contains the course title
+            audio_name = episodes[0].audio.name
+            
+            # Extract course name from audio filename
+            # Pattern: "10001coursename.mp3" -> "coursename"
+            import re
+            
+            # Try to extract course name from various patterns
+            patterns = [
+                r'\d+(.+?)\.mp3$',  # "10001coursename.mp3"
+                r'\d+(.+?)$',       # "10001coursename"
+                r'(.+?)\.mp3$',     # "coursename.mp3"
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, audio_name)
+                if match:
+                    course_name = match.group(1)
+                    # Clean the course name for folder creation
+                    course_name = self._clean_folder_name(course_name)
+                    if course_name:
+                        logger.debug(f"Extracted course name: {course_name}")
+                        return course_name
+            
+            # Fallback: use episode name
+            episode_name = episodes[0].name
+            if episode_name:
+                # Extract course name from episode title
+                # Usually the first part before specific lesson info
+                parts = episode_name.split(' ')
+                if len(parts) > 1:
+                    course_name = parts[0]
+                    course_name = self._clean_folder_name(course_name)
+                    if course_name:
+                        return course_name
+            
+            # Final fallback
+            return f"course_{course_id}"
+            
+        except Exception as e:
+            logger.error(f"Failed to extract course name: {e}")
+            return f"course_{course_id}"
+    
+    def _clean_folder_name(self, name: str) -> str:
+        """
+        Clean a string to be suitable for folder name.
+        
+        Args:
+            name: Raw name string
+            
+        Returns:
+            Cleaned folder name
+        """
+        if not name:
+            return ""
+        
+        # Remove common prefixes/suffixes
+        name = re.sub(r'^(第\d+課|課程|教學)', '', name)
+        name = re.sub(r'(課程|教學|講義)$', '', name)
+        
+        # Remove invalid characters for folder names
+        name = re.sub(r'[<>:"/\\|?*]', '', name)
+        name = re.sub(r'\s+', '', name)  # Remove all whitespace
+        
+        # Limit length
+        if len(name) > 50:
+            name = name[:50]
+        
+        return name.strip()
+    
+    async def get_total_episodes(self, course_id: int, max_pages: int = 50) -> int:
+        """
+        Determine the total number of episodes in a course.
+        
+        Args:
+            course_id: Course ID
+            max_pages: Maximum pages to scan (safety limit)
+            
+        Returns:
+            Total number of episodes
+        """
+        try:
+            logger.info(f"Scanning course {course_id} to find total episodes...")
+            
+            max_episode = 0
+            page = 1
+            
+            while page <= max_pages:
+                episodes = await self.extract_episodes_from_page(course_id, page)
+                
+                if not episodes:
+                    # No more episodes, we've reached the end
+                    break
+                
+                # Update max episode number found
+                page_max = max(ep.part for ep in episodes)
+                max_episode = max(max_episode, page_max)
+                
+                logger.debug(f"Page {page}: found episodes up to {page_max}")
+                
+                # If we got less than 10 episodes, this is likely the last page
+                if len(episodes) < 10:
+                    break
+                
+                page += 1
+                await self.http_client.add_delay()
+            
+            logger.info(f"Total episodes found: {max_episode}")
+            return max_episode
+            
+        except Exception as e:
+            logger.error(f"Failed to determine total episodes: {e}")
+            # Fallback: try to get from first page and estimate
+            try:
+                episodes = await self.extract_episodes_from_page(course_id, 1)
+                if episodes:
+                    return max(ep.part for ep in episodes) * 10  # Rough estimate
+            except:
+                pass
+            
+            return 100  # Conservative fallback
+    
     async def validate_course_url(self, url: str) -> bool:
         """
         Validate that a course URL is accessible and contains episode data.
@@ -228,3 +367,145 @@ class ChannelPlusScraper:
         except Exception as e:
             logger.error(f"Failed to get course info: {e}")
             raise
+    
+    async def detect_course_materials(self, course_id: int) -> List[Tuple[AttachmentInfo, str]]:
+        """
+        Detect course materials (PDFs, documents) from the first page.
+        
+        Args:
+            course_id: Course ID to check for materials
+            
+        Returns:
+            List of tuples (attachment_info, download_url)
+        """
+        try:
+            logger.info(f"Detecting course materials for course {course_id}...")
+            
+            # Get first page to check for materials
+            episodes = await self.extract_episodes_from_page(course_id, 1)
+            
+            if not episodes:
+                logger.info("No episodes found, no materials to detect")
+                return []
+            
+            materials = []
+            
+            # Check all episodes on first page for materials
+            for episode in episodes:
+                if not episode.attachment:
+                    continue
+                
+                for attachment in episode.attachment:
+                    # Skip string attachments, focus on AttachmentInfo objects
+                    if isinstance(attachment, str):
+                        continue
+                    
+                    if isinstance(attachment, AttachmentInfo) and attachment.key:
+                        # Generate download URL
+                        download_url = f"https://channelplus.ner.gov.tw/api/files/{attachment.key}"
+                        materials.append((attachment, download_url))
+                        
+                        logger.info(f"Found material: {attachment.name} -> {download_url}")
+            
+            if materials:
+                logger.info(f"Found {len(materials)} course materials")
+            else:
+                logger.info("No course materials found")
+            
+            return materials
+            
+        except Exception as e:
+            logger.error(f"Failed to detect course materials: {e}")
+            return []
+    
+    async def download_course_materials(self, materials: List[Tuple[AttachmentInfo, str]], download_path: Path) -> List[Dict[str, Any]]:
+        """
+        Download course materials to the specified path.
+        
+        Args:
+            materials: List of (attachment_info, download_url) tuples
+            download_path: Path to download materials to
+            
+        Returns:
+            List of download results with status information
+        """
+        if not materials:
+            return []
+        
+        logger.info(f"Downloading {len(materials)} course materials to {download_path}")
+        
+        # Ensure materials subdirectory exists
+        materials_path = download_path / "course_materials"
+        materials_path.mkdir(exist_ok=True)
+        
+        results = []
+        
+        for attachment, download_url in materials:
+            try:
+                # Generate safe filename
+                filename = self._generate_material_filename(attachment)
+                file_path = materials_path / filename
+                
+                logger.info(f"Downloading {attachment.name} -> {file_path}")
+                
+                # Download the file
+                content = await self.http_client.get_content(download_url)
+                
+                # Write to file
+                with open(file_path, 'wb') as f:
+                    f.write(content)
+                
+                result = {
+                    'attachment': attachment,
+                    'url': download_url,
+                    'file_path': file_path,
+                    'status': 'success',
+                    'size': len(content)
+                }
+                
+                logger.info(f"✅ Downloaded {attachment.name} ({len(content)} bytes)")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to download {attachment.name}: {e}")
+                result = {
+                    'attachment': attachment,
+                    'url': download_url,
+                    'file_path': None,
+                    'status': 'failed',
+                    'error': str(e)
+                }
+            
+            results.append(result)
+            
+            # Add delay between downloads
+            await self.http_client.add_delay()
+        
+        return results
+    
+    def _generate_material_filename(self, attachment: AttachmentInfo) -> str:
+        """
+        Generate a safe filename for course material.
+        
+        Args:
+            attachment: Attachment info
+            
+        Returns:
+            Safe filename for the material
+        """
+        if attachment.name:
+            # Use the original name if available
+            filename = attachment.name
+        else:
+            # Fallback: generate from key/id
+            key = attachment.key or attachment.id or "unknown"
+            filename = f"course_material_{key}.pdf"
+        
+        # Clean filename for filesystem safety
+        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        filename = filename.strip()
+        
+        # Ensure it has an extension
+        if '.' not in filename:
+            filename += '.pdf'
+        
+        return filename

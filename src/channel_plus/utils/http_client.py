@@ -281,6 +281,33 @@ class ChannelPlusHTTPClient:
         finally:
             response.close()
     
+    async def get_content(self, url: str, headers: Optional[Dict[str, str]] = None) -> bytes:
+        """
+        Get binary content from URL.
+        
+        Args:
+            url: URL to fetch
+            headers: Additional headers
+            
+        Returns:
+            Binary content as bytes
+        """
+        # Add referer for Channel Plus pages
+        request_headers = {}
+        if headers:
+            request_headers.update(headers)
+        
+        if 'channelplus.ner.gov.tw' in url and 'Referer' not in request_headers:
+            request_headers['Referer'] = 'https://channelplus.ner.gov.tw/'
+        
+        response = await self._make_request_with_retry('GET', url, headers=request_headers)
+        try:
+            content = await response.read()
+            logger.debug(f"Retrieved {len(content)} bytes from {url}")
+            return content
+        finally:
+            response.close()
+    
     def add_delay(self):
         """Add configured delay between requests."""
         return asyncio.sleep(self.delay_between_requests)
