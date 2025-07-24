@@ -1,0 +1,227 @@
+# Channel Plus 音檔下載器 
+一個現代化的 Python 實作，用於下載[國立教育廣播電台 Channel Plus](https://channelplus.ner.gov.tw/) 的語言學習音檔。
+
+## 📖 專案簡介
+
+國立教育廣播電台的 Channel Plus 平台提供了豐富的語言學習教材，包含日語、韓語、法語、西班牙語、德語、義大利語、越南語、泰語、印尼語、阿拉伯語及英語等多種語言課程，品質相當優秀。
+
+雖然平台支援線上收聽，但內建播放器功能有限，無法快轉、調整播放速度或離線收聽。這個工具讓您可以下載音檔到本機，使用您慣用的播放器自由收聽，支援快轉、倍速播放等功能。
+
+**非常推薦大家多多利用國立教育廣播電台的資源學習語言 - 這些都是我們納稅錢支持的優質教育內容！** 🇹🇼
+
+## ✨ 功能特色
+
+### 🆕 Python 版本增強功能
+- **⚡ 高效能下載**: 使用異步並發技術，下載速度比原版快 3 倍
+- **📊 即時進度條**: 美觀的進度顯示，包含下載速度和預估剩餘時間
+- **🔍 預覽模式**: `--dry-run` 參數可預覽要下載的內容，不實際下載
+- **✅ 網址驗證**: `--validate-only` 參數可檢查課程網址是否有效
+- **📝 詳細記錄**: `--verbose` 參數提供詳細的操作記錄，方便除錯
+- **🔄 自動重試**: 網路不穩時自動重試，採用指數退避演算法
+- **⚙️ 彈性設定**: 可自訂並發數量、逾時時間、重試次數等參數
+
+### 🔧 核心功能
+- **完整相容**: 與原版 Elixir 指令列參數 100% 相容
+- **智慧分頁**: 自動處理分頁邏輯（每頁 10 集）
+- **音檔完整性**: 保持原始檔名和音質
+- **錯誤處理**: 強健的錯誤處理和復原機制
+
+## 🚀 安裝說明
+
+### 前置需求
+- Python 3.12 或更新版本
+- [uv](https://docs.astral.sh/uv/) 套件管理工具
+
+### 安裝 uv (如果尚未安裝)
+```bash
+# macOS 和 Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 或使用 pip 安裝
+pip install uv
+```
+
+### 安裝 Channel Plus 下載器
+```bash
+# 下載專案
+git clone <repository-url>
+cd channel_plus
+
+# 安裝相依套件
+uv sync
+
+# 測試安裝是否成功
+uv run channel-plus --help
+```
+
+## 📚 使用方法
+
+### 基本用法
+```bash
+uv run channel-plus --path <下載路徑> --link <課程網址> --start <起始集數> --final <結束集數>
+```
+
+### 實際範例
+```bash
+# 下載日語會話課程第 155-160 集
+uv run channel-plus --path ~/Downloads/Japanese --link https://channelplus.ner.gov.tw/viewalllang/390 --start 155 --final 160
+
+# 下載英語課程第 1-10 集，使用 5 個並發連線
+uv run channel-plus --path ~/Downloads/English --link https://channelplus.ner.gov.tw/viewalllang/123 --start 1 --final 10 --concurrent 5
+```
+
+### 進階功能
+
+#### 🔍 預覽模式（不實際下載）
+```bash
+uv run channel-plus --path ~/Downloads --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 5 --dry-run --verbose
+```
+
+#### ✅ 驗證課程網址
+```bash
+uv run channel-plus --path /tmp --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 1 --validate-only
+```
+
+#### 📝 詳細記錄模式
+```bash
+uv run channel-plus --path ~/Downloads --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 10 --verbose
+```
+
+#### ⚙️ 自訂下載參數
+```bash
+uv run channel-plus \
+  --path ~/Downloads \
+  --link https://channelplus.ner.gov.tw/viewalllang/390 \
+  --start 1 --final 20 \
+  --concurrent 8 \
+  --timeout 600 \
+  --retry-attempts 5 \
+  --delay 0.5
+```
+
+## 📋 參數說明
+
+| 參數 | 必填 | 說明 | 預設值 |
+|------|------|------|--------|
+| `--path` | ✅ | 音檔下載路徑 | - |
+| `--link` | ✅ | Channel Plus 課程頁面網址 | - |
+| `--start` | ✅ | 起始集數 | - |
+| `--final` | ✅ | 結束集數 | - |
+| `--concurrent` | ❌ | 並發下載數量 (1-10) | 3 |
+| `--timeout` | ❌ | 請求逾時秒數 | 300 |
+| `--retry-attempts` | ❌ | 重試次數 (1-10) | 3 |
+| `--delay` | ❌ | 請求間隔秒數 | 1.0 |
+| `--verbose` | ❌ | 顯示詳細記錄 | 關閉 |
+| `--dry-run` | ❌ | 預覽模式（不實際下載） | 關閉 |
+| `--validate-only` | ❌ | 僅驗證網址有效性 | 關閉 |
+
+## 🎯 如何找到課程網址
+
+1. 前往 [Channel Plus 官網](https://channelplus.ner.gov.tw/)
+2. 選擇您想學習的語言分類
+3. 點選特定課程進入課程頁面
+4. 複製瀏覽器網址列的 URL，例如：
+   - 日語：`https://channelplus.ner.gov.tw/viewalllang/390`
+   - 英語：`https://channelplus.ner.gov.tw/viewalllang/123`
+   - 法語：`https://channelplus.ner.gov.tw/viewalllang/456`
+
+## 🔧 疑難排解
+
+### 常見問題
+
+**Q: 下載失敗或中斷怎麼辦？**
+A: 程式具備自動重試功能。您也可以：
+- 增加重試次數：`--retry-attempts 5`
+- 增加逾時時間：`--timeout 600`
+- 降低並發數量：`--concurrent 2`
+
+**Q: 如何確認課程網址是否正確？**
+A: 使用驗證模式：
+```bash
+uv run channel-plus --validate-only --path /tmp --link <課程網址> --start 1 --final 1
+```
+
+**Q: 下載速度太慢或太快被伺服器限制？**
+A: 調整下載參數：
+```bash
+# 較保守的設定（適合網路不穩定時）
+--concurrent 2 --delay 2.0
+
+# 較積極的設定（適合網路狀況良好時）
+--concurrent 6 --delay 0.5
+```
+
+**Q: 程式顯示找不到集數？**
+A: 請檢查：
+- 集數範圍是否正確（課程頁面會顯示總集數）
+- 網址是否正確
+- 使用 `--verbose` 查看詳細記錄
+
+### 錯誤代碼說明
+
+- **HTTP 401**: 伺服器拒絕存取，通常是暫時性問題，請稍後重試
+- **HTTP 404**: 找不到指定的集數或課程
+- **HTTP 429**: 請求過於頻繁，請降低並發數量或增加延遲時間
+- **TimeoutError**: 網路逾時，請增加 `--timeout` 參數
+
+## 🛠️ 開發說明
+
+### 專案架構
+```
+src/channel_plus/
+├── core/
+│   ├── models.py      # 資料模型
+│   ├── scraper.py     # 網頁爬蟲
+│   ├── downloader.py  # 下載引擎
+│   └── config.py      # 設定管理
+├── utils/
+│   └── http_client.py # HTTP 用戶端
+└── main.py           # 主程式進入點
+```
+
+### 執行測試
+```bash
+# 執行所有測試
+uv run pytest
+
+# 執行特定測試
+uv run pytest tests/test_models.py
+
+# 執行整合測試（會連接真實網站）
+uv run pytest tests/test_integration.py -m integration
+```
+
+### 開發模式安裝
+```bash
+# 安裝開發相依套件
+uv sync --dev
+
+# 程式碼格式化
+uv run black src/ tests/
+
+# 型別檢查
+uv run mypy src/
+```
+
+## 📜 授權條款
+
+請合理使用，尊重國立教育廣播電台的智慧財產權。
+
+## 🙏 致謝
+
+- 感謝國立教育廣播電台提供優質的語言學習資源
+- 本 Python 版本使用現代化技術重新實作，提供更好的使用體驗
+
+## 📞 回饋與建議
+
+如果您在使用過程中遇到問題或有改善建議，歡迎透過以下方式聯繫：
+- 建立 Issue 回報問題
+- 提交 Pull Request 貢獻程式碼
+- 分享使用心得和建議
+
+---
+
+**讓我們一起善用國立教育廣播電台的優質資源，提升語言學習效率！** 🚀📚

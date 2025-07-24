@@ -6,7 +6,7 @@ and configuration options for the downloader.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union, Any
 from datetime import datetime
 
 from pydantic import BaseModel, Field, validator
@@ -33,8 +33,25 @@ class ImageInfo(BaseModel):
 class UpdateMember(BaseModel):
     """Information about the member who updated the episode."""
     
-    sn: int = Field(..., description="Member serial number")
+    # Handle both 'sn' (int) and 'id' (string) depending on course
+    sn: Optional[int] = Field(None, description="Member serial number")
+    id: Optional[str] = Field(None, description="Member ID (alternative to sn)")
     name: str = Field(..., description="Member name")
+    
+    @property
+    def identifier(self) -> str:
+        """Get the member identifier (sn or id)."""
+        if self.sn is not None:
+            return str(self.sn)
+        return self.id or "unknown"
+
+
+class AttachmentInfo(BaseModel):
+    """Information about an attachment (flexible structure)."""
+    
+    name: Optional[str] = Field(None, description="Attachment name")
+    key: Optional[str] = Field(None, description="Attachment key")
+    id: Optional[str] = Field(None, alias="_id", description="Attachment ID")
 
 
 class Episode(BaseModel):
@@ -59,13 +76,32 @@ class Episode(BaseModel):
     guest: List[str] = Field(default_factory=list, description="Guest list")
     keyword: List[str] = Field(default_factory=list, description="Keywords")
     album: List[str] = Field(default_factory=list, description="Album information")
-    attachment: List[str] = Field(default_factory=list, description="Attachments")
+    attachment: List[Union[str, AttachmentInfo]] = Field(default_factory=list, description="Attachments")
     
     # Timestamps
     created_at: str = Field(..., alias="createdAt", description="Creation timestamp")
     update_at: str = Field(..., alias="updateAt", description="Update timestamp")
     version: int = Field(default=0, alias="__v", description="Version number")
 
+    @validator('attachment', pre=True)
+    def validate_attachment(cls, v):
+        """Handle flexible attachment parsing (strings or objects)."""
+        if not v:
+            return []
+        
+        result = []
+        for item in v:
+            if isinstance(item, str):
+                # Simple string attachment
+                result.append(item)
+            elif isinstance(item, dict):
+                # Complex attachment object
+                result.append(AttachmentInfo(**item))
+            else:
+                # Unknown type, skip
+                continue
+        return result
+    
     @validator('release_date', 'created_at', 'update_at')
     def validate_date_format(cls, v):
         """Validate date strings are in expected format."""
