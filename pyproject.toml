@@ -1,7 +1,7 @@
 [project]
 name = "channel-plus"
 version = "0.1.0"
-description = "Channel Plus audio downloader - Python implementation of Taiwan National Radio language learning materials downloader"
+description = "Modern Python-based Channel Plus downloader for Taiwan National Radio language learning materials with smart defaults and course material detection"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

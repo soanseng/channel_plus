@@ -55,7 +55,7 @@ class ChannelPlusScraper:
             # Get page content
             page_content = await self.http_client.get_text(url)
             
-            # Extract JSON data using regex (same pattern as original Elixir code)
+            # Extract JSON data using regex pattern
             json_pattern = r'window\.__PRELOADED_STATE__ = ({.+})'
             match = re.search(json_pattern, page_content)
             
@@ -71,7 +71,7 @@ class ChannelPlusScraper:
                 logger.error(f"Failed to parse JSON from page {page}: {e}")
                 raise ValueError(f"Invalid JSON data on page {page}") from e
             
-            # Navigate to episode data following the same path as Elixir code
+            # Navigate to episode data structure
             # reducers.languageEpisode.data
             try:
                 reducers = page_data['reducers']

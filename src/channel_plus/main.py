@@ -1,9 +1,9 @@
 """
 Main entry point for Channel Plus downloader.
 
-A modern Python implementation of the Channel Plus audio downloader,
-providing the same CLI interface as the original Elixir version with
-enhanced features like progress bars and better error handling.
+A modern Python implementation of the Channel Plus audio downloader
+with enhanced features like progress bars, automatic course material detection,
+smart defaults, and better error handling.
 """
 
 import asyncio
@@ -104,12 +104,12 @@ def main(
     """
     Channel Plus audio downloader - Python implementation.
     
-    Downloads audio files from Taiwan National Radio Channel Plus language learning courses.
+    Downloads audio files and course materials from Taiwan National Radio Channel Plus 
+    language learning courses with smart defaults and enhanced features.
     
     Example usage:
+        channel-plus --link https://channelplus.ner.gov.tw/viewalllang/49
         channel-plus --path /Users/scipio/Downloads/ --link https://channelplus.ner.gov.tw/viewalllang/390 --start 155 --final 160
-    
-    Compatible with the original Elixir version's command-line interface.
     """
     # Set up logging
     setup_logging(verbose)

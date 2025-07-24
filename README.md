@@ -23,7 +23,7 @@
 - **⚙️ 彈性設定**: 可自訂並發數量、逾時時間、重試次數等參數
 
 ### 🔧 核心功能
-- **完整相容**: 與原版 Elixir 指令列參數 100% 相容
+- **專業品質**: 高品質的音檔下載和檔名處理
 - **智慧分頁**: 自動處理分頁邏輯（每頁 10 集）
 - **音檔完整性**: 保持原始檔名和音質
 - **錯誤處理**: 強健的錯誤處理和復原機制
@@ -84,7 +84,7 @@ uv run channel-plus --link https://channelplus.ner.gov.tw/viewalllang/390 --star
 # 自訂下載路徑
 uv run channel-plus --path ~/Documents/Japanese --link https://channelplus.ner.gov.tw/viewalllang/49
 
-# 完整自訂（舊版用法仍然支援）
+# 完整自訂
 uv run channel-plus --path ~/Downloads/English --link https://channelplus.ner.gov.tw/viewalllang/123 --start 1 --final 10 --concurrent 5
 ```
 

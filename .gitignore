@@ -1,46 +1,87 @@
-# The directory Mix will write compiled artifacts to.
-/_build/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# If you run "mix test --cover", coverage assets end up here.
-/cover/
+# PyInstaller
+*.manifest
+*.spec
 
-# The directory Mix downloads your dependencies sources to.
-/deps/
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Where third-party dependencies like ExDoc output generated docs.
-/doc/
-
-# Ignore .fetch files in case you like to edit your project deps locally.
-/.fetch
-
-# If the VM crashes, it generates a dump, let's ignore it too.
-erl_crash.dump
-
-# Also ignore archive artifacts (built via "mix archive.build").
-*.ez
-
-# Ignore package tarball (built via "mix hex.build").
-scraping-*.tar
-
-# generate ignore for the project
-.DS_Store
-.vscode/
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
 .pytest_cache/
-.python-version
+cover/
+
+# Virtual environments
 .env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+.python-version
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-*.egg-info/
-dist/
-build/
+# uv
+.uv/
 
-
+# Downloaded content (user data)
+downloads/
+*.mp3
+*.pdf
+course_materials/

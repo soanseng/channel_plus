@@ -1,8 +1,8 @@
 """
 Channel Plus - Python implementation of Taiwan National Radio language learning materials downloader.
 
-A modern Python replacement for the original Elixir-based Channel Plus downloader,
-providing async downloads, progress tracking, and enhanced user experience.
+A modern Python-based Channel Plus downloader providing async downloads, 
+automatic course material detection, progress tracking, and enhanced user experience.
 """
 
 __version__ = "0.1.0"
