@@ -88,6 +88,16 @@ console = Console()
     is_flag=True,
     help='Only validate the course URL and show course information'
 )
+@click.option(
+    '--force-redownload',
+    is_flag=True,
+    help='Force redownload all files, ignoring existing files and resume state'
+)
+@click.option(
+    '--clean-resume',
+    is_flag=True,
+    help='Clear resume state and start fresh (but keep existing valid files)'
+)
 def main(
     path: Optional[Path],
     link: str,
@@ -99,17 +109,24 @@ def main(
     delay: float,
     verbose: bool,
     dry_run: bool,
-    validate_only: bool
+    validate_only: bool,
+    force_redownload: bool,
+    clean_resume: bool
 ) -> None:
     """
     Channel Plus audio downloader - Python implementation.
     
     Downloads audio files and course materials from Taiwan National Radio Channel Plus 
-    language learning courses with smart defaults and enhanced features.
+    language learning courses with smart defaults, resume support, and enhanced features.
+    
+    Resume functionality: Interrupted downloads can be resumed automatically. 
+    The downloader remembers completed files and skips them on subsequent runs.
     
     Example usage:
         channel-plus --link https://channelplus.ner.gov.tw/viewalllang/49
         channel-plus --path /Users/scipio/Downloads/ --link https://channelplus.ner.gov.tw/viewalllang/390 --start 155 --final 160
+        channel-plus --link https://channelplus.ner.gov.tw/viewalllang/573 --force-redownload
+        channel-plus --link https://channelplus.ner.gov.tw/viewalllang/49 --clean-resume
     """
     # Set up logging
     setup_logging(verbose)
@@ -287,6 +304,16 @@ async def async_main(
             
             downloader = ChannelPlusDownloader(http_client, config)
             
+            # Handle resume options
+            if clean_resume:
+                resume_file = actual_path / ".channel_plus_resume.json"
+                if resume_file.exists():
+                    resume_file.unlink()
+                    console.print("[yellow]🧹 Cleared resume state, starting fresh[/yellow]")
+            
+            if force_redownload:
+                console.print("[yellow]🔄 Force redownload enabled, ignoring existing files[/yellow]")
+            
             # Start material downloads concurrently with episodes
             material_task = None
             if materials:
@@ -295,8 +322,12 @@ async def async_main(
                     scraper.download_course_materials(materials, actual_path)
                 )
             
-            # Download episodes with progress tracking
-            summary = await downloader.download_episodes_batch(episodes, show_progress=True)
+            # Download episodes with progress tracking and resume support
+            summary = await downloader.download_episodes_batch(
+                episodes, 
+                show_progress=True, 
+                force_redownload=force_redownload
+            )
             
             # Show results
             downloader.print_summary(summary)

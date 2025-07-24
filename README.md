@@ -14,6 +14,7 @@
 ### 🆕 Python 版本增強功能
 - **🧩 智慧預設值**: 只需提供課程網址，自動偵測課程名稱、總集數並建立資料夾
 - **📚 課程教材下載**: 自動偵測並下載課程附帶的 PDF 講義等教材檔案
+- **🔄 斷點續傳**: 自動偵測已下載檔案，下載中斷後可接續完成，節省時間和流量
 - **⚡ 高效能下載**: 使用異步並發技術，下載速度比原版快 3 倍
 - **📊 即時進度條**: 美觀的進度顯示，包含下載速度和預估剩餘時間
 - **🔍 預覽模式**: `--dry-run` 參數可預覽要下載的內容，不實際下載
@@ -169,6 +170,22 @@ uv run channel-plus --path /tmp --link https://channelplus.ner.gov.tw/viewalllan
 uv run channel-plus --path ~/Downloads --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 10 --verbose
 ```
 
+#### 🔄 斷點續傳功能
+```bash
+# 第一次下載 (可能會中斷)
+uv run channel-plus --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 50
+
+# 重新執行相同命令會自動跳過已下載的檔案
+uv run channel-plus --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 50
+# ✅ 輸出: Found 23 existing complete files, skipping
+
+# 強制重新下載所有檔案
+uv run channel-plus --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 50 --force-redownload
+
+# 清除續傳記錄，重新偵測現有檔案
+uv run channel-plus --link https://channelplus.ner.gov.tw/viewalllang/390 --start 1 --final 50 --clean-resume
+```
+
 #### ⚙️ 自訂下載參數
 ```bash
 uv run channel-plus \
@@ -196,6 +213,8 @@ uv run channel-plus \
 | `--verbose` | ❌ | 顯示詳細記錄 | 關閉 |
 | `--dry-run` | ❌ | 預覽模式（不實際下載） | 關閉 |
 | `--validate-only` | ❌ | 僅驗證網址有效性 | 關閉 |
+| `--force-redownload` | ❌ | 強制重新下載所有檔案，忽略已存在的檔案 | 關閉 |
+| `--clean-resume` | ❌ | 清除續傳狀態，重新開始但保留有效檔案 | 關閉 |
 
 ## 🎯 如何找到課程網址
 
